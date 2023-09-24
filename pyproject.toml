@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "tsp100-print"
+version = "0.1.0"
+description = "Send images to the Star Micronics TSP100 receipt printer"
+authors = ["Dalpil"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+click = "^8.1.7"
+Pillow = "^10.0.1"
+
+[tool.poetry.scripts]
+tsp100-print = 'tsp100_print.main:print_image'
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

@@ -12,6 +12,25 @@ See the [STAR Graphic Mode Command Specifications, Rev. 2.32](https://starmicron
     $ tsp100-print <printer-ip> <input.png>
 
 
+# Installation instructions
+
+Clone the repository:
+
+    $ git clone https://github.com/dalpil/tsp100-print.git
+    $ cd tsp100-print
+
+And then install with pip:
+
+    $ pip install .
+
+Or with poetry:
+
+    $ poetry shell
+    $ poetry install
+
+The `tsp100-print` command should now be available.
+
+
 ## Usage instructions
 
     Usage: tsp100-print [OPTIONS] PRINTER_IP INPUT

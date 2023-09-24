@@ -10,15 +10,22 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
 
-@click.command()
+@click.command(context_settings={'show_default': True})
 @click.option('--density', default=3, type=click.IntRange(0, 6), help='0 = Highest density, 6 = Lowest density')
+@click.option('--dither', default='NONE', type=click.Choice(['NONE', 'FLOYDSTEINBERG'], case_sensitive=False))
 @click.option('--margin-top', default=0)
 @click.option('--margin-bottom', default=9)
-@click.option('--resize-width', type=int)
+@click.option('--resize-width', type=int, help='Resizes input image to the given width while preserving aspect ratio')
 @click.option('--speed', default=2, type=click.IntRange(0, 2), help='0 = Fastest, 2 = Slowest')
 @click.argument('printer-ip')
 @click.argument('input', type=click.File('rb'))
-def print_image(printer_ip, input, density, margin_top, margin_bottom, resize_width, speed):
+def print_image(printer_ip, input, density, dither, margin_top, margin_bottom, resize_width, speed):
+    '''
+    This is a small utility for sending raster images to Star Micronics TSP100 / TSP143 receipt printers.
+
+    The program expects bilevel (black and white) images, at most 576 pixels wide. Wider images will be cropped.
+    '''
+
     try:
         image = Image.open(input)
     except UnidentifiedImageError:
@@ -28,7 +35,7 @@ def print_image(printer_ip, input, density, margin_top, margin_bottom, resize_wi
     if any(histogram[1:-1]):
         log.warning('More than 2 levels (black/white), data will be lost via thresholding')
     
-    image = image.convert("1", dither=Image.Dither.NONE)
+    image = image.convert("1", dither=getattr(Image.Dither, dither.upper()))
     image = ImageOps.invert(image)
 
     if resize_width:
@@ -36,7 +43,7 @@ def print_image(printer_ip, input, density, margin_top, margin_bottom, resize_wi
         log.info(f'Resizing image to width / height: {resize_width} / {resize_height}')
         image = image.resize((resize_width, resize_height))
 
-    # Crop the image if needed, try to be as graceful as possible by not cropping actual image data
+    # Crop the image if needed, try to be minimally destructive by only cropping "empty" image data
     if image.width > 576:
         log.warning('Image is wider than 576 pixels')
 
@@ -141,12 +148,8 @@ def print_image(printer_ip, input, density, margin_top, margin_bottom, resize_wi
             raise click.ClickException('Print might have failed, check printer')
 
         connection.close()
-        time.sleep(1) # Wait for the cutter to do its thing
+        time.sleep(1) # Wait for the cutter to do its thing before exiting
         break
 
     else:
         raise click.ClickException('Could not verify print, check printer')
-
-
-if __name__ == '__main__':
-    print_image()

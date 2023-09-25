@@ -11,6 +11,7 @@ log = logging.getLogger(__name__)
 
 
 @click.command(context_settings={'show_default': True})
+@click.option('--cut/--no-cut', default=True, help='Whether or not to cut receipt after printing')
 @click.option('--density', default=3, type=click.IntRange(0, 6), help='0 = Highest density, 6 = Lowest density')
 @click.option('--dither', default='NONE', type=click.Choice(['NONE', 'FLOYDSTEINBERG'], case_sensitive=False))
 @click.option('--margin-top', default=0)
@@ -19,7 +20,7 @@ log = logging.getLogger(__name__)
 @click.option('--speed', default=2, type=click.IntRange(0, 2), help='0 = Fastest, 2 = Slowest')
 @click.argument('printer-ip')
 @click.argument('input', type=click.File('rb'))
-def print_image(printer_ip, input, density, dither, margin_top, margin_bottom, resize_width, speed):
+def print_image(printer_ip, input, cut, density, dither, margin_top, margin_bottom, resize_width, speed):
     '''
     This is a small utility for sending raster images to Star Micronics TSP100 / TSP143 receipt printers.
 
@@ -105,6 +106,10 @@ def print_image(printer_ip, input, density, dither, margin_top, margin_bottom, r
     connection.sendall(bytes([0x1b, 0x1e, 0x64, density])) # Set print density
     connection.sendall(bytes([0x1b, ord(b'*'), ord(b'r'), ord(b'R')])) # Init raster mode, this will clear the input buffer if theres any stray data
     connection.sendall(bytes([0x1b, ord(b'*'), ord(b'r'), ord(b'A')])) # Enter raster mode
+
+    if not cut:
+        connection.sendall(bytes([0x1b, ord(b'*'), ord(b'r'), ord(b'E'), 1, 0x00])) # End of Transmission cut behaviour
+
     connection.sendall(bytes([0x1b, ord(b'*'), ord(b'r'), ord(b'Q'), 2, 0x00])) # Raster quality, not sure if this does anything
     connection.sendall(bytes([0x1b, ord(b'*'), ord(b'r'), ord(b'm'), ord(b'l'), 0, 0x00])) # No left margin
     connection.sendall(bytes([0x1b, ord(b'*'), ord(b'r'), ord(b'm'), ord(b'r'), 0, 0x00])) # No right margin

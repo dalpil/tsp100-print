@@ -34,14 +34,16 @@ The `tsp100-print` command should now be available.
 ## Usage instructions
 
     Usage: tsp100-print [OPTIONS] PRINTER_IP INPUT
-
+    
       This is a small utility for sending raster images to Star Micronics TSP100 /
       TSP143 receipt printers.
-
+    
       The program expects bilevel (black and white) images, at most 576 pixels
       wide. Wider images will be cropped.
-
+    
     Options:
+      --cut / --no-cut                Whether or not to cut receipt after printing
+                                      [default: cut]
       --density INTEGER RANGE         0 = Highest density, 6 = Lowest density
                                       [default: 3; 0<=x<=6]
       --dither [NONE|FLOYDSTEINBERG]  [default: NONE]
@@ -52,3 +54,4 @@ The `tsp100-print` command should now be available.
       --speed INTEGER RANGE           0 = Fastest, 2 = Slowest  [default: 2;
                                       0<=x<=2]
       --help                          Show this message and exit.
+

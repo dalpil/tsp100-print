@@ -27,7 +27,7 @@ def discover_printers():
     sock.sendto(msg, ("255.255.255.255", 22222))
 
     try:
-        _data, sender = sock.recvfrom(SOCKET_BUFFER_SIZE)
+        _data, (sender, _port) = sock.recvfrom(SOCKET_BUFFER_SIZE)
         return sender
 
     except TimeoutError:
@@ -42,9 +42,23 @@ def discover_printers():
 def get_printer_status(host):
     sock = socket.create_connection((host, 9101), timeout=1)
     sock.settimeout(1)
-    sock.sendall(b'0' + bytes([0x00] * 50))
+    sock.sendall(b'0' + bytes([0x00] * 50)) # '2' will also work
     response = sock.recv(SOCKET_BUFFER_SIZE)
-    return response
+
+    # The first byte contains the status length
+    h1 = response[0]
+    status_length = ((h1 >> 2) & 0b1000) + ((h1 >> 1) & 0b111)
+
+    # The docs are very ambiguous about the second byte. First it claims to only use 4 bits, just like
+    # the first byte, but then there's a table that counts up to 31, which would require 5 bits.
+    #
+    # Appendix-2 mentions something about bit 7 being set to 1 instead of 0.
+    #
+    # The docs does state that this byte can be safely ignored however, so I'll do just that.
+    h2 = response[1]
+    _status_version = ((h2 >> 2) & 0b11000) + ((h2 >> 1) & 0b111) # NOTE: Use 5 bits, instead of 4
+
+    return response[2:status_length + 2]
 
 
 @click.command(context_settings={'show_default': True})
@@ -122,31 +136,31 @@ def print_image(input, autodiscover, cut, density, dither, host, margin_top, mar
     try:
         connection = socket.create_connection((host, 9100), timeout=1)
     except TimeoutError as e:
-        raise click.ClickException(f'Timed out while trying to connect to {printer_ip}, make sure that the printer is online') from e
+        raise click.ClickException(f'Timed out while trying to connect to {host}, make sure that the printer is online') from e
     except OSError as e:
-        raise click.ClickException(f'Could not connect to {printer_ip}: {e}') from e
+        raise click.ClickException(f'Could not connect to {host}: {e}') from e
 
-    # Read printer status
-    data = connection.recv(SOCKET_BUFFER_SIZE)
-    log.debug('ASB: %s', repr([hex(x) for x in data]))
+    # Read printer status, NSB
+    status = connection.recv(SOCKET_BUFFER_SIZE)
+    log.debug('ASB: %s', repr([hex(x) for x in status]))
 
-    if any(data[2:]):
-        if data[2] & 1 << 3:
+    if any(status[2:]):
+        if status[2] & 1 << 3:
             click.echo('Printer status is offline')
 
-        if data[2] & 1 << 5:
+        if status[2] & 1 << 5:
             click.echo('Printer cover is open')
 
-        if data[3] & 1 << 3:
+        if status[3] & 1 << 3:
             click.echo('Auto cutter error')
 
-        if data[3] & 1 << 5:
+        if status[3] & 1 << 5:
             click.echo('Unrecoverable printer error')
 
-        if data[3] & 1 << 6:
+        if status[3] & 1 << 6:
             click.echo('High temperature error')
 
-        if data[5] & 1 << 3:
+        if status[5] & 1 << 3:
             click.echo('Printer is out of paper')
 
         raise click.ClickException('Please check printer')
@@ -187,23 +201,11 @@ def print_image(input, autodiscover, cut, density, dither, host, margin_top, mar
     connection.sendall(bytes([0x1b, ord(b'*'), ord(b'r'), ord(b'B')])) # Quit raster mode
     connection.close()
 
-    # Try to reconnect to the printer to check status
-    for _ in range(10):
-        try:
-            connection = socket.create_connection((host, 9100), timeout=1)
-        except (TimeoutError, OSError):
-            time.sleep(1)
-            continue
+    status = get_printer_status(host)
+    log.debug('Print verification ASB: %s', repr([hex(x) for x in status]))
 
-        data = connection.recv(SOCKET_BUFFER_SIZE)
-        log.debug('Print verification ASB: %s', repr([hex(x) for x in data]))
+    if any(status):
+        raise click.ClickException('Print might have failed, check printer')
 
-        if any(data[2:]):
-            raise click.ClickException('Print might have failed, check printer')
-
-        connection.close()
-        time.sleep(1) # Wait for the cutter to do its thing before exiting
-        break
-
-    else:
-        raise click.ClickException('Could not verify print, check printer')
+    connection.close()
+    time.sleep(1) # Wait for the cutter to do its thing before exiting

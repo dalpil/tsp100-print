@@ -43,7 +43,7 @@ def get_printer_status(host):
     sock = socket.create_connection((host, 9101), timeout=1)
     sock.settimeout(1)
     sock.sendall(b'0' + bytes([0x00] * 50))
-    response = sock.recv(1024)
+    response = sock.recv(SOCKET_BUFFER_SIZE)
     return response
 
 
@@ -79,8 +79,8 @@ def print_image(input, autodiscover, cut, density, dither, host, margin_top, mar
 
     try:
         image = Image.open(input)
-    except UnidentifiedImageError:
-        raise click.ClickException(f'Could not open {input.name} as an image, unknown format')
+    except UnidentifiedImageError as e:
+        raise click.ClickException(f'Could not open {input.name} as an image, unknown format') from e
 
     histogram = image.histogram()
     if any(histogram[1:-1]):
@@ -91,7 +91,7 @@ def print_image(input, autodiscover, cut, density, dither, host, margin_top, mar
 
     if resize_width:
         resize_height = resize_width * image.height // image.width
-        log.info(f'Resizing image to width / height: {resize_width} / {resize_height}')
+        log.info('Resizing image to width / height: %d / %d', resize_width, resize_height)
         image = image.resize((resize_width, resize_height))
 
     # Crop the image if needed, try to be minimally destructive by only cropping "empty" image data
@@ -121,14 +121,14 @@ def print_image(input, autodiscover, cut, density, dither, host, margin_top, mar
     # Connect to the printer
     try:
         connection = socket.create_connection((host, 9100), timeout=1)
-    except TimeoutError:
-        raise click.ClickException(f'Timed out while trying to connect to {host}, make sure that the printer is online')
+    except TimeoutError as e:
+        raise click.ClickException(f'Timed out while trying to connect to {printer_ip}, make sure that the printer is online') from e
     except OSError as e:
-        raise click.ClickException(f'Could not connect to {host}: {e}')
+        raise click.ClickException(f'Could not connect to {printer_ip}: {e}') from e
 
     # Read printer status
     data = connection.recv(SOCKET_BUFFER_SIZE)
-    log.debug(f'ASB: {repr([hex(x) for x in data])}')
+    log.debug('ASB: %s', repr([hex(x) for x in data]))
 
     if any(data[2:]):
         if data[2] & 1 << 3:
@@ -196,7 +196,7 @@ def print_image(input, autodiscover, cut, density, dither, host, margin_top, mar
             continue
 
         data = connection.recv(SOCKET_BUFFER_SIZE)
-        log.debug(f'Print verification ASB: {repr([hex(x) for x in data])}')
+        log.debug('Print verification ASB: %s', repr([hex(x) for x in data]))
 
         if any(data[2:]):
             raise click.ClickException('Print might have failed, check printer')

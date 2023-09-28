@@ -58,6 +58,9 @@ def get_printer_status(host):
     h2 = response[1]
     _status_version = ((h2 >> 2) & 0b11000) + ((h2 >> 1) & 0b111) # NOTE: Use 5 bits, instead of 4
 
+    etb = response[5]
+    etb_counter = ((etb >> 2) & 0b11000) + ((etb >> 1) & 0b111)
+
     return response[2:status_length + 2]
 
 

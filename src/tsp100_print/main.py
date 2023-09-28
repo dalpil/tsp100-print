@@ -16,6 +16,9 @@ log = logging.getLogger(__name__)
 # We can discover printers on the local network by broadcasting a certain bytestring on port 22222.
 # Printers will respond back to us, with a similar bytestring, plus some additional data about the
 # printer, such as model name, mac address, how it's configured (DHCP/STATIC), et.c.
+#
+# This is apparently called SDP, or "Star Discovery Protocol", and it's briefly mentioned in this
+# document: http://www.starasia.com/Download/Others/UsersManual_IFBD_HE0708BE07_EN.pdf
 def discover_printers():
     msg = b'STR_BCAST' + bytes([0x00] * 7) + b'RQ1.0.0' + bytes([0x00, 0x00, 0x1c, 0x64, 0x31])
 
@@ -39,6 +42,7 @@ def discover_printers():
 
 # This was discovered by capturing network traffic from the futurePRNT software.
 # NOTE: The status bytestring received from the printer is duplicated for some reason.
+# The protocol is briefly mentioned here: http://www.starasia.com/Download/Others/UsersManual_IFBD_HE0708BE07_EN.pdf
 def get_printer_status(host):
     sock = socket.create_connection((host, 9101), timeout=1)
     sock.settimeout(1)

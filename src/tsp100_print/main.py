@@ -73,30 +73,19 @@ def get_printer_status(host):
 @click.option('--cut/--no-cut', default=True, help='Whether or not to cut receipt after printing')
 @click.option('-d', '--density', default=3, type=click.IntRange(0, 6), help='0 = Highest density, 6 = Lowest density')
 @click.option('--dither', default='NONE', type=click.Choice(['NONE', 'FLOYDSTEINBERG'], case_sensitive=False))
-@click.option('-h', '--host', help='Hostname or IP-address of the printer')
 @click.option('--margin-top', default=0)
 @click.option('--margin-bottom', default=9)
 @click.option('--resize-width', type=int, help='Resizes input image to the given width while preserving aspect ratio')
 @click.option('-s', '--speed', default=2, type=click.IntRange(0, 2), help='0 = Fastest, 2 = Slowest')
+@click.option('--log-level', type=click.Choice(['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG'], case_sensitive=False, default='WARNING'))
+@click.argument('printer', required=False)
 @click.argument('input', type=click.File('rb'))
-def print_image(input, autodiscover, cut, density, dither, host, margin_top, margin_bottom, resize_width, speed):
+def print_image(printer, input, autodiscover, cut, density, dither, margin_top, margin_bottom, resize_width, speed):
     '''
     This is a small utility for sending raster images to Star Micronics TSP100 / TSP143 receipt printers.
 
     The program expects bilevel (black and white) images, at most 576 pixels wide. Wider images will be cropped.
     '''
-
-    if host:
-        pass
-
-    elif autodiscover:
-        host = discover_printers()
-
-        if not host:
-            raise click.ClickException('Could not autodiscover any printer')
-
-    else:
-        raise click.UsageError('You need to specify either --autodiscover or -h/--host <printer-hostname-or-ip>')
 
     try:
         image = Image.open(input)
@@ -117,7 +106,7 @@ def print_image(input, autodiscover, cut, density, dither, host, margin_top, mar
 
     # Crop the image if needed, try to be minimally destructive by only cropping "empty" image data
     if image.width > 576:
-        log.warning('Image is wider than 576 pixels')
+        log.warning('Image is wider than 576 pixels, cropping will occur')
 
         (left, _upper, right, _lower) = image.getbbox()
         cropped_width = right - left
@@ -138,6 +127,13 @@ def print_image(input, autodiscover, cut, density, dither, host, margin_top, mar
     if not any(raw_bytes):
         log.critical('Image is blank, refusing to print')
         raise click.ClickException('Nothing to print')
+
+    if not printer:
+        host = discover_printers()
+        if not host:
+            raise click.ClickException('Could not autodetect printer, and no printer was given')
+    else:
+        host = printer
 
     # Connect to the printer
     try:

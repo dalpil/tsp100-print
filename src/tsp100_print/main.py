@@ -8,7 +8,6 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 
 SOCKET_BUFFER_SIZE = 1024
 
-logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
 
@@ -68,24 +67,36 @@ def get_printer_status(host):
     return response[2:status_length + 2]
 
 
-@click.command(context_settings={'show_default': True})
-@click.option('--autodiscover', is_flag=True, default=False, help='Try to autodiscover the printer on the network via broadcasting')
+
+class OptionalFirstArgumentCommand(click.Command):
+    def parse_args(self, ctx, args):
+        positional_arguments = [arg for arg in args if not arg.startswith('-')]
+
+        if len(positional_arguments) == 1:
+            args.insert(len(args) - 1, '')
+
+        super(OptionalFirstArgumentCommand, self).parse_args(ctx, args)
+
+
+@click.command(context_settings={'show_default': True}, cls=OptionalFirstArgumentCommand)
 @click.option('--cut/--no-cut', default=True, help='Whether or not to cut receipt after printing')
 @click.option('-d', '--density', default=3, type=click.IntRange(0, 6), help='0 = Highest density, 6 = Lowest density')
 @click.option('--dither', default='NONE', type=click.Choice(['NONE', 'FLOYDSTEINBERG'], case_sensitive=False))
+@click.option('--log-level', type=click.Choice(['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG'], case_sensitive=False), default='WARNING')
 @click.option('--margin-top', default=0)
 @click.option('--margin-bottom', default=9)
 @click.option('--resize-width', type=int, help='Resizes input image to the given width while preserving aspect ratio')
 @click.option('-s', '--speed', default=2, type=click.IntRange(0, 2), help='0 = Fastest, 2 = Slowest')
-@click.option('--log-level', type=click.Choice(['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG'], case_sensitive=False, default='WARNING'))
 @click.argument('printer', required=False)
 @click.argument('input', type=click.File('rb'))
-def print_image(printer, input, autodiscover, cut, density, dither, margin_top, margin_bottom, resize_width, speed):
+def print_image(printer, input, cut, density, dither, log_level, margin_top, margin_bottom, resize_width, speed):
     '''
     This is a small utility for sending raster images to Star Micronics TSP100 / TSP143 receipt printers.
 
     The program expects bilevel (black and white) images, at most 576 pixels wide. Wider images will be cropped.
     '''
+
+    logging.basicConfig(level=getattr(logging, log_level))
 
     try:
         image = Image.open(input)
@@ -106,9 +117,9 @@ def print_image(printer, input, autodiscover, cut, density, dither, margin_top, 
 
     # Crop the image if needed, try to be minimally destructive by only cropping "empty" image data
     if image.width > 576:
-        log.warning('Image is wider than 576 pixels, cropping will occur')
+        log.info('Image is wider than 576 pixels, cropping will occur')
 
-        (left, _upper, right, _lower) = image.getbbox()
+        (left, _upper, right, _lower) = image.getbbox() or (0, 0, image.width, image.height)
         cropped_width = right - left
 
         if cropped_width > 576:
@@ -116,7 +127,7 @@ def print_image(printer, input, autodiscover, cut, density, dither, margin_top, 
             image = image.crop((0, 0, 576, image.height))
         else:
             if right > 576:
-                log.info('Cropping empty image content only, image will be shifted to the left')
+                log.warning('Cropping empty image content only, image will be shifted to the left')
                 image = image.crop((left, 0, right, image.height))
             else:
                 log.info('Cropping empty image content only, no data loss')
@@ -126,7 +137,7 @@ def print_image(printer, input, autodiscover, cut, density, dither, margin_top, 
 
     if not any(raw_bytes):
         log.critical('Image is blank, refusing to print')
-        raise click.ClickException('Nothing to print')
+        raise click.ClickException('Image contains no printable data')
 
     if not printer:
         host = discover_printers()

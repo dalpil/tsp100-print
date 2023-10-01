@@ -30,6 +30,8 @@ def discover_printers():
 
     try:
         _data, (sender, _port) = sock.recvfrom(SOCKET_BUFFER_SIZE)
+
+        # Just grab the first available printer
         return sender
 
     except TimeoutError:
@@ -97,6 +99,7 @@ def print_image(printer, input, cut, density, dither, log_level, margin_top, mar
     '''
 
     logging.basicConfig(level=getattr(logging, log_level))
+    logging.getLogger('PIL').setLevel(logging.WARNING)
 
     try:
         image = Image.open(input)
@@ -156,30 +159,44 @@ def print_image(printer, input, cut, density, dither, log_level, margin_top, mar
 
     # Read printer status, NSB
     status = connection.recv(SOCKET_BUFFER_SIZE)
-    log.debug('ASB: %s', repr([hex(x) for x in status]))
+    log.debug('First ASB: %s', repr([hex(x) for x in status]))
 
-    if any(status[2:]):
-        if status[2] & 1 << 3:
-            click.echo('Printer status is offline')
+    # if any(status[2:]):
+    #     if status[2] & 1 << 3:
+    #         click.echo('Printer status is offline')
 
-        if status[2] & 1 << 5:
-            click.echo('Printer cover is open')
+    #     if status[2] & 1 << 5:
+    #         click.echo('Printer cover is open')
 
-        if status[3] & 1 << 3:
-            click.echo('Auto cutter error')
+    #     if status[3] & 1 << 3:
+    #         click.echo('Auto cutter error')
 
-        if status[3] & 1 << 5:
-            click.echo('Unrecoverable printer error')
+    #     if status[3] & 1 << 5:
+    #         click.echo('Unrecoverable printer error')
 
-        if status[3] & 1 << 6:
-            click.echo('High temperature error')
+    #     if status[3] & 1 << 6:
+    #         click.echo('High temperature error')
 
-        if status[5] & 1 << 3:
-            click.echo('Printer is out of paper')
+    #     if status[5] & 1 << 3:
+    #         click.echo('Printer is out of paper')
 
-        raise click.ClickException('Please check printer')
+    #     raise click.ClickException('Please check printer')
+
+    # Reset ETB counter
+    connection.sendall(bytes([0x1b, 0x1e, 0x45, 0]))
+    status = connection.recv(SOCKET_BUFFER_SIZE)
+    log.debug('After ESB reset ASB: %s', repr([hex(x) for x in status]))
+    
+    # Increase ETB
+    connection.sendall(bytes([0x17]))
+    status = connection.recv(SOCKET_BUFFER_SIZE)
+    log.debug('Pre-document increment ESB ASB: %s', repr([hex(x) for x in status]))
 
     # Initialize printer
+
+    # Start Document
+    connection.sendall(bytes([0x1b, 0x1d, 0x03, 3, 0, 0]))
+
     connection.sendall(bytes([0x1b, 0x1e, 0x72, speed])) # Speed
     connection.sendall(bytes([0x1b, 0x1e, 0x64, density])) # Set print density
     connection.sendall(bytes([0x1b, ord(b'*'), ord(b'r'), ord(b'R')])) # Init raster mode, this will clear the input buffer if theres any stray data
@@ -191,6 +208,7 @@ def print_image(printer, input, cut, density, dither, log_level, margin_top, mar
     connection.sendall(bytes([0x1b, ord(b'*'), ord(b'r'), ord(b'm'), ord(b'l'), 0, 0x00])) # No left margin
     connection.sendall(bytes([0x1b, ord(b'*'), ord(b'r'), ord(b'm'), ord(b'r'), 0, 0x00])) # No right margin
     connection.sendall(bytes([0x1b, ord(b'*'), ord(b'r'), ord(b'P'), ord(b'0'), 0x00])) # Set raster length to continuous
+
     BYTES_PER_LINE = 72
 
     # Send top margin, 8 dots per millimeter
@@ -213,13 +231,26 @@ def print_image(printer, input, cut, density, dither, log_level, margin_top, mar
         connection.sendall(bytes([0x00] * BYTES_PER_LINE))
 
     connection.sendall(bytes([0x1b, ord(b'*'), ord(b'r'), ord(b'B')])) # Quit raster mode
+
+    # Increase ETB
+    connection.sendall(bytes([0x17]))
+
+    # End document
+    connection.sendall(bytes([0x1b, 0x1d, 0x03, 4, 0, 0]))
+
+    # Wait for print to finish
+    previous_status = status
+    for _iteration in range(100):
+        time.sleep(0.1)
+        status = get_printer_status(host)
+        log.debug('Print verification ASB: %s', repr([hex(x) for x in status]))
+        if previous_status[2:] != status:
+            log.debug("ETB increased, print finished!")
+            break
+    else:
+        raise click.ClickException('Print failed, check printer')
+
+    # Reset ETB counter
+    connection.sendall(bytes([0x1b, 0x1e, 0x45, 0]))
+
     connection.close()
-
-    status = get_printer_status(host)
-    log.debug('Print verification ASB: %s', repr([hex(x) for x in status]))
-
-    if any(status):
-        raise click.ClickException('Print might have failed, check printer')
-
-    connection.close()
-    time.sleep(1) # Wait for the cutter to do its thing before exiting

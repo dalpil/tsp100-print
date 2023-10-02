@@ -1,3 +1,4 @@
+import enum
 import logging
 import socket
 import time
@@ -9,6 +10,73 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 SOCKET_BUFFER_SIZE = 1024
 
 log = logging.getLogger(__name__)
+
+
+class PrinterStatus(enum.Flag):
+    COVER_OPEN    = 0b00100000
+    OFFLINE       = 0b00001000
+    COMPULSION_SW = 0b00000100
+    ETB_EXECUTED  = 0b00000010
+
+class PrinterError(enum.Flag):
+    HIGH_TEMPERATURE    = 0b01000000
+    UNRECOVERABLE_ERROR = 0b00100000
+    CUTTER_ERROR        = 0b00001000
+
+class PaperError(enum.Flag):
+    NO_PAPER = 0b00001000
+
+class Status:
+    def __init__(self):
+        self.etb_executed = False
+        self.etb_counter = 0
+        self.status = []
+
+    def parse(self, status):
+        b1 = status[0]
+        status_length = ((b1 >> 2) & 0b1000) + ((b1 >> 1) & 0b111)
+
+        # The docs are ambigious about this one.
+        # We're reading 5 bits instead of 4, to count up to 31.
+        # Docs state that this can be safely ignored, so we'll ignore it.
+        # The 7th bit is set when getting status over LAN.
+        b2 = status[1]
+        _status_version = ((b2 >> 2) & 0b11000) + ((b2 >> 1) & 0b111)
+
+
+        b3 = status[2]
+        if b3 & PrinterStatus.COVER_OPEN.value:
+            self.status.append(PrinterStatus.COVER_OPEN)
+
+        if b3 & PrinterStatus.OFFLINE.value:
+            self.status.append(PrinterStatus.OFFLINE)
+
+        if b3 & PrinterStatus.COMPULSION_SW.value:
+            self.status.append(PrinterStatus.COMPULSION_SW)
+
+        self.etb_executed = False
+        if b3 & PrinterStatus.ETB_EXECUTED.value:
+            self.etb_executed = True
+
+
+        b4 = status[3]
+        if b4 & PrinterError.HIGH_TEMPERATURE.value:
+            self.status.append(PrinterError.HIGH_TEMPERATURE)
+
+        if b4 & PrinterError.UNRECOVERABLE_ERROR.value:
+            self.status.append(PrinterError.UNRECOVERABLE_ERROR)
+
+        if b4 & PrinterError.CUTTER_ERROR.value:
+            self.status.append(PrinterError.CUTTER_ERROR)
+
+
+        b6 = status[5]
+        if b6 & PaperError.NO_PAPER.value:
+            self.status.append(PaperError.NO_PAPER)
+
+
+        b8 = status[7]
+        self.etb_counter = ((b8 >> 2) & 0b11000) + ((b8 >> 1) & 0b111)
 
 
 # This was discovered by capturing network traffic from the futurePRNT software.
@@ -186,7 +254,7 @@ def print_image(printer, input, cut, density, dither, log_level, margin_top, mar
     connection.sendall(bytes([0x1b, 0x1e, 0x45, 0]))
     status = connection.recv(SOCKET_BUFFER_SIZE)
     log.debug('After ESB reset ASB: %s', repr([hex(x) for x in status]))
-    
+
     # Increase ETB
     connection.sendall(bytes([0x17]))
     status = connection.recv(SOCKET_BUFFER_SIZE)

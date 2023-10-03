@@ -161,17 +161,7 @@ def get_printer_status(host):
     return status
 
 
-class OptionalFirstArgumentCommand(click.Command):
-    def parse_args(self, ctx, args):
-        positional_arguments = [arg for arg in args if not arg.startswith('-')]
-
-        if len(positional_arguments) == 1:
-            args.insert(len(args) - 1, '')
-
-        super(OptionalFirstArgumentCommand, self).parse_args(ctx, args)
-
-
-@click.command(context_settings={'show_default': True}, cls=OptionalFirstArgumentCommand)
+@click.command(context_settings={'show_default': True})
 @click.option('--cut/--no-cut', default=True, help='Whether or not to cut receipt after printing')
 @click.option('-d', '--density', default=3, type=click.IntRange(0, 6), help='0 = Highest density, 6 = Lowest density')
 @click.option('--dither', default='NONE', type=click.Choice(['NONE', 'FLOYDSTEINBERG'], case_sensitive=False))
@@ -180,7 +170,7 @@ class OptionalFirstArgumentCommand(click.Command):
 @click.option('--margin-bottom', default=9)
 @click.option('--resize-width', type=int, help='Resizes input image to the given width while preserving aspect ratio')
 @click.option('-s', '--speed', default=2, type=click.IntRange(0, 2), help='0 = Fastest, 2 = Slowest')
-@click.argument('printer', required=False)
+@click.argument('printer', nargs=-1)
 @click.argument('input', type=click.File('rb'))
 def print_image(printer, input, cut, density, dither, log_level, margin_top, margin_bottom, resize_width, speed):
     '''
@@ -191,6 +181,9 @@ def print_image(printer, input, cut, density, dither, log_level, margin_top, mar
 
     logging.basicConfig(level=getattr(logging, log_level))
     logging.getLogger('PIL').setLevel(logging.WARNING)
+
+    if len(printer) > 1:
+        raise click.UsageError('Multiple printers specified, please specify a single printer')
 
     try:
         image = Image.open(input)
@@ -238,7 +231,7 @@ def print_image(printer, input, cut, density, dither, log_level, margin_top, mar
         if not host:
             raise click.ClickException('Could not autodetect printer, and no printer was given')
     else:
-        host = printer
+        host = printer[0]
 
     # Connect to the printer
     try:

@@ -18,21 +18,58 @@ class PrinterStatus(enum.Flag):
     COMPULSION_SW = 0b00000100
     ETB_EXECUTED  = 0b00000010
 
+    def __str__(self):
+        if self is PrinterStatus.COVER_OPEN:
+            return 'Cover is open'
+
+        if self is PrinterStatus.OFFLINE:
+            return 'Printer status is offline'
+
+        if self is PrinterStatus.COMPULSION_SW:
+            return 'Switch is being pressed'
+
+        if self is PrinterStatus.ETB_EXECUTED:
+            return 'ETB was executed'
+
 class PrinterError(enum.Flag):
     HIGH_TEMPERATURE    = 0b01000000
     UNRECOVERABLE_ERROR = 0b00100000
     CUTTER_ERROR        = 0b00001000
 
+    def __str__(self):
+        if self is PrinterError.HIGH_TEMPERATURE:
+            return 'High temperature error'
+
+        if self is PrinterError.UNRECOVERABLE_ERROR:
+            return 'Unrecoverable error'
+
+        if self is PrinterError.CUTTER_ERROR:
+            return 'Cutter error'
+
 class PaperError(enum.Flag):
     NO_PAPER = 0b00001000
+
+    def __str__(self):
+        return 'Out of paper'
+
+
+class ErrorList(list):
+    def __str__(self):
+        return ', '.join(str(s) for s in self)
+
 
 class Status:
     def __init__(self):
         self.etb_executed = False
         self.etb_counter = 0
-        self.status = []
+        self.errors = ErrorList()
+
+    def __str__(self):
+        return f'ETB Executed: {self.etb_executed}, ETB Counter: {self.etb_counter}, ErrorList: {self.errors}'
 
     def parse(self, status):
+        self.errors = ErrorList()
+
         b1 = status[0]
         status_length = ((b1 >> 2) & 0b1000) + ((b1 >> 1) & 0b111)
 
@@ -46,13 +83,13 @@ class Status:
 
         b3 = status[2]
         if b3 & PrinterStatus.COVER_OPEN.value:
-            self.status.append(PrinterStatus.COVER_OPEN)
+            self.errors.append(PrinterStatus.COVER_OPEN)
 
         if b3 & PrinterStatus.OFFLINE.value:
-            self.status.append(PrinterStatus.OFFLINE)
+            self.errors.append(PrinterStatus.OFFLINE)
 
         if b3 & PrinterStatus.COMPULSION_SW.value:
-            self.status.append(PrinterStatus.COMPULSION_SW)
+            self.errors.append(PrinterStatus.COMPULSION_SW)
 
         self.etb_executed = False
         if b3 & PrinterStatus.ETB_EXECUTED.value:
@@ -61,18 +98,18 @@ class Status:
 
         b4 = status[3]
         if b4 & PrinterError.HIGH_TEMPERATURE.value:
-            self.status.append(PrinterError.HIGH_TEMPERATURE)
+            self.errors.append(PrinterError.HIGH_TEMPERATURE)
 
         if b4 & PrinterError.UNRECOVERABLE_ERROR.value:
-            self.status.append(PrinterError.UNRECOVERABLE_ERROR)
+            self.errors.append(PrinterError.UNRECOVERABLE_ERROR)
 
         if b4 & PrinterError.CUTTER_ERROR.value:
-            self.status.append(PrinterError.CUTTER_ERROR)
+            self.errors.append(PrinterError.CUTTER_ERROR)
 
 
         b6 = status[5]
         if b6 & PaperError.NO_PAPER.value:
-            self.status.append(PaperError.NO_PAPER)
+            self.errors.append(PaperError.NO_PAPER)
 
 
         b8 = status[7]
@@ -110,7 +147,7 @@ def discover_printers():
 
 
 # This was discovered by capturing network traffic from the futurePRNT software.
-# NOTE: The status bytestring received from the printer is duplicated for some reason.
+# NOTE: The status bytestring received from my printer is duplicated for some reason.
 # The protocol is briefly mentioned here: http://www.starasia.com/Download/Others/UsersManual_IFBD_HE0708BE07_EN.pdf
 def get_printer_status(host):
     sock = socket.create_connection((host, 9101), timeout=1)
@@ -118,24 +155,10 @@ def get_printer_status(host):
     sock.sendall(b'0' + bytes([0x00] * 50)) # '2' will also work
     response = sock.recv(SOCKET_BUFFER_SIZE)
 
-    # The first byte contains the status length
-    h1 = response[0]
-    status_length = ((h1 >> 2) & 0b1000) + ((h1 >> 1) & 0b111)
+    status = Status()
+    status.parse(response)
 
-    # The docs are very ambiguous about the second byte. First it claims to only use 4 bits, just like
-    # the first byte, but then there's a table that counts up to 31, which would require 5 bits.
-    #
-    # Appendix-2 mentions something about bit 7 being set to 1 instead of 0.
-    #
-    # The docs does state that this byte can be safely ignored however, so I'll do just that.
-    h2 = response[1]
-    _status_version = ((h2 >> 2) & 0b11000) + ((h2 >> 1) & 0b111) # NOTE: Use 5 bits, instead of 4
-
-    etb = response[5]
-    etb_counter = ((etb >> 2) & 0b11000) + ((etb >> 1) & 0b111)
-
-    return response[2:status_length + 2]
-
+    return status
 
 
 class OptionalFirstArgumentCommand(click.Command):
@@ -225,40 +248,30 @@ def print_image(printer, input, cut, density, dither, log_level, margin_top, mar
     except OSError as e:
         raise click.ClickException(f'Could not connect to {host}: {e}') from e
 
-    # Read printer status, NSB
-    status = connection.recv(SOCKET_BUFFER_SIZE)
-    log.debug('First ASB: %s', repr([hex(x) for x in status]))
+    # Read printer status
+    printer_status = Status()
 
-    # if any(status[2:]):
-    #     if status[2] & 1 << 3:
-    #         click.echo('Printer status is offline')
-
-    #     if status[2] & 1 << 5:
-    #         click.echo('Printer cover is open')
-
-    #     if status[3] & 1 << 3:
-    #         click.echo('Auto cutter error')
-
-    #     if status[3] & 1 << 5:
-    #         click.echo('Unrecoverable printer error')
-
-    #     if status[3] & 1 << 6:
-    #         click.echo('High temperature error')
-
-    #     if status[5] & 1 << 3:
-    #         click.echo('Printer is out of paper')
-
-    #     raise click.ClickException('Please check printer')
+    asb_status = connection.recv(SOCKET_BUFFER_SIZE)
+    log.debug('First ASB: %s', repr([hex(x) for x in asb_status]))
+    printer_status.parse(asb_status)
+    if printer_status.errors:
+        raise click.ClickException(f'Printer errors: {printer_status.errors}')
 
     # Reset ETB counter
     connection.sendall(bytes([0x1b, 0x1e, 0x45, 0]))
-    status = connection.recv(SOCKET_BUFFER_SIZE)
-    log.debug('After ESB reset ASB: %s', repr([hex(x) for x in status]))
+    asb_status = connection.recv(SOCKET_BUFFER_SIZE)
+    log.debug('After ESB reset ASB: %s', repr([hex(x) for x in asb_status]))
+    printer_status.parse(asb_status)
+    if printer_status.errors:
+        raise click.ClickException(f'Printer errors: {printer_status.errors}')
 
     # Increase ETB
     connection.sendall(bytes([0x17]))
-    status = connection.recv(SOCKET_BUFFER_SIZE)
-    log.debug('Pre-document increment ESB ASB: %s', repr([hex(x) for x in status]))
+    asb_status = connection.recv(SOCKET_BUFFER_SIZE)
+    log.debug('Pre-document increment ESB ASB: %s', repr([hex(x) for x in asb_status]))
+    printer_status.parse(asb_status)
+    if printer_status.errors:
+        raise click.ClickException(f'Printer errors: {printer_status.errors}')
 
     # Initialize printer
 
@@ -307,13 +320,15 @@ def print_image(printer, input, cut, density, dither, log_level, margin_top, mar
     connection.sendall(bytes([0x1b, 0x1d, 0x03, 4, 0, 0]))
 
     # Wait for print to finish
-    previous_status = status
     for _iteration in range(100):
         time.sleep(0.1)
-        status = get_printer_status(host)
-        log.debug('Print verification ASB: %s', repr([hex(x) for x in status]))
-        if previous_status[2:] != status:
-            log.debug("ETB increased, print finished!")
+        new_printer_status = get_printer_status(host)
+
+        if new_printer_status.errors:
+            raise click.ClickException(f'Printer errors: {new_printer_status.errors}')
+
+        if new_printer_status.etb_counter > printer_status.etb_counter:
+            log.debug("ETB increased from %d to %d, print finished!", printer_status.etb_counter, new_printer_status.etb_counter)
             break
     else:
         raise click.ClickException('Print failed, check printer')

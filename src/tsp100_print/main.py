@@ -168,6 +168,7 @@ def get_printer_status(host):
 @click.option('--log-level', type=click.Choice(['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG'], case_sensitive=False), default='WARNING')
 @click.option('--margin-top', default=0)
 @click.option('--margin-bottom', default=9)
+@click.option('--print-timeout', default=10, help='Maximum time in seconds to wait for a print to finish')
 @click.option('--resize-width', type=int, help='Resizes input image to the given width while preserving aspect ratio')
 @click.option('-s', '--speed', default=2, type=click.IntRange(0, 2), help='0 = Fastest, 2 = Slowest')
 @click.argument('printer', nargs=-1)
@@ -312,9 +313,10 @@ def print_image(printer, image_file, cut, density, dither, log_level, margin_top
     # End document
     connection.sendall(bytes([0x1b, 0x1d, 0x03, 4, 0, 0]))
 
-    # Wait for print to finish
-    for _iteration in range(100):
-        time.sleep(0.1)
+    # Wait for print to finish by waiting for the ETB counter to increase
+    iteration_delay = 0.1
+    for _iteration in range(int(print_timeout / iteration_delay)):
+        time.sleep(iteration_delay)
         new_printer_status = get_printer_status(host)
 
         if new_printer_status.errors:

@@ -1,5 +1,6 @@
 import enum
 import logging
+import math
 import socket
 import time
 
@@ -294,9 +295,10 @@ def print_image(printer, image_file, cut, density, dither, log_level, margin_top
     # Send image
     index = 0
     for _line in range(image.height):
-        connection.sendall(bytes([ord(b'b'), BYTES_PER_LINE, 0x00]))
+        line_length = min(math.ceil(image.width / 8), BYTES_PER_LINE)
+        connection.sendall(bytes([ord(b'b'), line_length, 0x00]))
 
-        for _row in range(BYTES_PER_LINE):
+        for _row in range(line_length):
             connection.sendall(bytes([raw_bytes[index]]))
             index += 1
 

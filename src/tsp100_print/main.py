@@ -71,7 +71,7 @@ class Status:
         self.errors = ErrorList()
 
         b1 = status[0]
-        status_length = ((b1 >> 2) & 0b1000) + ((b1 >> 1) & 0b111)
+        _status_length = ((b1 >> 2) & 0b1000) + ((b1 >> 1) & 0b111)
 
         # The docs are ambigious about this one.
         # We're reading 5 bits instead of 4, to count up to 31.
@@ -171,8 +171,8 @@ def get_printer_status(host):
 @click.option('--resize-width', type=int, help='Resizes input image to the given width while preserving aspect ratio')
 @click.option('-s', '--speed', default=2, type=click.IntRange(0, 2), help='0 = Fastest, 2 = Slowest')
 @click.argument('printer', nargs=-1)
-@click.argument('input', type=click.File('rb'))
-def print_image(printer, input, cut, density, dither, log_level, margin_top, margin_bottom, resize_width, speed):
+@click.argument('image_file', type=click.File('rb'))
+def print_image(printer, image_file, cut, density, dither, log_level, margin_top, margin_bottom, print_timeout, resize_width, speed):
     '''
     This is a small utility for sending raster images to Star Micronics TSP100 / TSP143 receipt printers.
 
@@ -186,9 +186,9 @@ def print_image(printer, input, cut, density, dither, log_level, margin_top, mar
         raise click.UsageError('Multiple printers specified, please specify a single printer')
 
     try:
-        image = Image.open(input)
+        image = Image.open(image_file)
     except UnidentifiedImageError as e:
-        raise click.ClickException(f'Could not open {input.name} as an image, unknown format') from e
+        raise click.ClickException(f'Could not open {image_file.name} as an image, unknown format') from e
 
     histogram = image.histogram()
     if any(histogram[1:-1]):

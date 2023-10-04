@@ -243,14 +243,21 @@ def print_image(printer, image_file, cut, density, dither, log_level, margin_top
     except OSError as e:
         raise click.ClickException(f'Could not connect to {host}: {e}') from e
 
-    # Read printer status
     printer_status = Status()
 
+    # Read printer status
     asb_status = connection.recv(SOCKET_BUFFER_SIZE)
     log.debug('First ASB: %s', repr([hex(x) for x in asb_status]))
     printer_status.parse(asb_status)
     if printer_status.errors:
         raise click.ClickException(f'Printer errors: {printer_status.errors}')
+
+    # This is where we must clear all previous failures, if any
+    # We might have to send junk data first, if the printer is still waiting for image data.
+    connection.sendall(bytes([0x1b, ord(b'*'), ord(b'r'), ord(b'B')])) # Quit raster mode
+    connection.sendall(bytes([0x1b, ord(b'*'), ord(b'r'), ord(b'C')])) # Clear raster data
+    connection.sendall(bytes([0x1b, 0x1d, 0x03, 4, 0, 0])) # End document
+    # We cannot proceed unless everything has been cleared and reinitialized by now
 
     # Reset ETB counter
     connection.sendall(bytes([0x1b, 0x1e, 0x45, 0]))

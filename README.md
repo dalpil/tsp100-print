@@ -4,6 +4,10 @@ A small utility for sending raster images to LAN-connected Star Micronics TSP100
 
 The program expects bilevel images, at most 576 pixels wide, and it will complain if you try to feed it anything else.
 
+If no printer is specified, the program will try to autodetect a printer on the network.
+
+The program will do its best to verify that the printjob completed sucessfully, by using the document start/end commands, as well as using the ETB-counter to detect a sucessful print.
+
 See the [STAR Graphic Mode Command Specifications, Rev. 2.32](https://starmicronics.com/support/Mannualfolder/star_graphic_cm_en.pdf) for detailed information on how to talk to these printers.
 
 
@@ -34,13 +38,13 @@ The `tsp100-print` command should now be available.
 ## Usage instructions
 
     Usage: tsp100-print [OPTIONS] PRINTER_IP INPUT
-    
+
       This is a small utility for sending raster images to Star Micronics TSP100 /
       TSP143 receipt printers.
-    
+
       The program expects bilevel (black and white) images, at most 576 pixels
       wide. Wider images will be cropped.
-    
+
     Options:
       --cut / --no-cut                Whether or not to cut receipt after printing
                                       [default: cut]

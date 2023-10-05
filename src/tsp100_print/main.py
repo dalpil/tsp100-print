@@ -261,18 +261,18 @@ def print_image(printer, image_file, cut, density, dither, log_level, margin_top
 
     # Reset ETB counter
     connection.sendall(bytes([0x1b, 0x1e, 0x45, 0]))
-    asb_status = connection.recv(SOCKET_BUFFER_SIZE)
-    log.debug('After ESB reset ASB: %s', repr([hex(x) for x in asb_status]))
-    printer_status.parse(asb_status)
+    printer_status = get_printer_status(host)
+    if printer_status.etb_counter != 0:
+        raise click.ClickException('Could not reset ETB counter')
     if printer_status.errors:
         raise click.ClickException(f'Printer errors: {printer_status.errors}')
 
     # Increase ETB
     connection.sendall(bytes([0x17]))
-    asb_status = connection.recv(SOCKET_BUFFER_SIZE)
-    log.debug('Pre-document increment ESB ASB: %s', repr([hex(x) for x in asb_status]))
-    printer_status.parse(asb_status)
-    if printer_status.errors:
+    new_printer_status = get_printer_status(host)
+    if new_printer_status.etb_counter <= printer_status.etb_counter:
+        raise click.ClickException('ETB counter did not increase')
+    if new_printer_status.errors:
         raise click.ClickException(f'Printer errors: {printer_status.errors}')
 
     # Initialize printer

@@ -284,6 +284,7 @@ def print_image(printer, image_file, cut, density, dither, log_level, margin_top
     connection.sendall(bytes([0x1b, 0x1e, 0x64, density])) # Set print density
     connection.sendall(bytes([0x1b, ord(b'*'), ord(b'r'), ord(b'R')])) # Init raster mode, this will clear the input buffer if theres any stray data
     connection.sendall(bytes([0x1b, ord(b'*'), ord(b'r'), ord(b'A')])) # Enter raster mode
+    connection.sendall(bytes([0x1b, ord(b'*'), ord(b'r'), ord(b'Q', 2, 0x00)])) # Set raster print quality
 
     if not cut:
         connection.sendall(bytes([0x1b, ord(b'*'), ord(b'r'), ord(b'E'), 1, 0x00])) # End of Transmission cut behaviour

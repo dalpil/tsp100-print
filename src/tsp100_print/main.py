@@ -162,31 +162,7 @@ def get_printer_status(host):
     return status
 
 
-@click.command(context_settings={'show_default': True})
-@click.option('--cut/--no-cut', default=True, help='Whether or not to cut receipt after printing')
-@click.option('-d', '--density', default=3, type=click.IntRange(0, 6), help='0 = Highest density, 6 = Lowest density')
-@click.option('--dither', default='NONE', type=click.Choice(['NONE', 'FLOYDSTEINBERG'], case_sensitive=False))
-@click.option('--log-level', type=click.Choice(['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG'], case_sensitive=False), default='WARNING')
-@click.option('--margin-top', default=0)
-@click.option('--margin-bottom', default=9)
-@click.option('--print-timeout', default=10, help='Maximum time in seconds to wait for a print to finish')
-@click.option('--resize-width', type=int, help='Resizes input image to the given width while preserving aspect ratio')
-@click.option('-s', '--speed', default=2, type=click.IntRange(0, 2), help='0 = Fastest, 2 = Slowest')
-@click.argument('printer', nargs=-1)
-@click.argument('image_file', type=click.File('rb'))
-def print_image(printer, image_file, cut, density, dither, log_level, margin_top, margin_bottom, print_timeout, resize_width, speed):
-    '''
-    This is a small utility for sending raster images to Star Micronics TSP100 / TSP143 receipt printers.
-
-    The program expects bilevel (black and white) images, at most 576 pixels wide. Wider images will be cropped.
-    '''
-
-    logging.basicConfig(level=getattr(logging, log_level))
-    logging.getLogger('PIL').setLevel(logging.WARNING)
-
-    if len(printer) > 1:
-        raise click.UsageError('Multiple printers specified, please specify a single printer')
-
+def process_image(image_file, dither, resize_width):
     try:
         image = Image.open(image_file)
     except UnidentifiedImageError as e:
@@ -194,7 +170,7 @@ def print_image(printer, image_file, cut, density, dither, log_level, margin_top
 
     histogram = image.histogram()
     if any(histogram[1:-1]):
-        log.warning('More than 2 levels (black/white), data will be lost via thresholding')
+        log.warning('More than 2 levels (black/white), data will be lost via thresholding/dithering')
 
     image = image.convert("1", dither=getattr(Image.Dither, dither.upper()))
     image = ImageOps.invert(image)
@@ -222,6 +198,35 @@ def print_image(printer, image_file, cut, density, dither, log_level, margin_top
                 log.info('Cropping empty image content only, no data loss')
                 image = image.crop((0, 0, right, image.height))
 
+    return image
+
+
+@click.command(context_settings={'show_default': True})
+@click.option('--cut/--no-cut', default=True, help='Whether or not to cut receipt after printing')
+@click.option('-d', '--density', default=3, type=click.IntRange(0, 6), help='0 = Highest density, 6 = Lowest density')
+@click.option('--dither', default='NONE', type=click.Choice(['NONE', 'FLOYDSTEINBERG'], case_sensitive=False))
+@click.option('--log-level', type=click.Choice(['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG'], case_sensitive=False), default='WARNING')
+@click.option('--margin-top', default=0)
+@click.option('--margin-bottom', default=9)
+@click.option('--print-timeout', default=10, help='Maximum time in seconds to wait for a print to finish')
+@click.option('--resize-width', type=int, help='Resizes input image to the given width while preserving aspect ratio')
+@click.option('-s', '--speed', default=2, type=click.IntRange(0, 2), help='0 = Fastest, 2 = Slowest')
+@click.argument('printer', nargs=-1)
+@click.argument('image_file', type=click.File('rb'))
+def print_image(printer, image_file, cut, density, dither, log_level, margin_top, margin_bottom, print_timeout, resize_width, speed):
+    '''
+    This is a small utility for sending raster images to Star Micronics TSP100 / TSP143 receipt printers.
+
+    The program expects bilevel (black and white) images, at most 576 pixels wide. Wider images will be cropped.
+    '''
+
+    logging.basicConfig(level=getattr(logging, log_level))
+    logging.getLogger('PIL').setLevel(logging.WARNING)
+
+    if len(printer) > 1:
+        raise click.UsageError('Multiple printers specified, please specify a single printer')
+
+    image = process_image(image_file, dither, resize_width)
     raw_bytes = image.tobytes()
 
     if not any(raw_bytes):
@@ -230,6 +235,7 @@ def print_image(printer, image_file, cut, density, dither, log_level, margin_top
 
     if not printer:
         host = discover_printers()
+
         if not host:
             raise click.ClickException('Could not autodetect printer, and no printer was given')
     else:

@@ -267,6 +267,7 @@ def print_image(printer, image_file, cut, density, dither, log_level, margin_top
 
     # Reset ETB counter
     connection.sendall(bytes([0x1b, 0x1e, 0x45, 0]))
+    time.sleep(0.1)
     printer_status = get_printer_status(host)
     if printer_status.etb_counter != 0:
         raise click.ClickException('Could not reset ETB counter')
@@ -275,6 +276,7 @@ def print_image(printer, image_file, cut, density, dither, log_level, margin_top
 
     # Increase ETB
     connection.sendall(bytes([0x17]))
+    time.sleep(0.1)
     new_printer_status = get_printer_status(host)
     if new_printer_status.etb_counter <= printer_status.etb_counter:
         raise click.ClickException('ETB counter did not increase')

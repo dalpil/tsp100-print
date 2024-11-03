@@ -5,7 +5,7 @@ import socket
 import time
 
 import click
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import Image, ImageEnhance, ImageOps, UnidentifiedImageError
 
 
 SOCKET_BUFFER_SIZE = 1024
@@ -162,7 +162,7 @@ def get_printer_status(host):
     return status
 
 
-def process_image(image_file, dither, resize_width):
+def process_image(image_file, dither, resize_width, sharpness):
     try:
         image = Image.open(image_file)
     except UnidentifiedImageError as e:
@@ -177,6 +177,9 @@ def process_image(image_file, dither, resize_width):
         resize_height = resize_width * image.height // image.width
         log.info('Resizing image to width / height: %d / %d', resize_width, resize_height)
         image = image.resize((resize_width, resize_height))
+
+    image = ImageEnhance.Sharpness(image)
+    image = image.enhance(sharpness)
 
     image = image.convert("1", dither=getattr(Image.Dither, dither.upper()))
     image = ImageOps.invert(image)
@@ -212,9 +215,10 @@ def process_image(image_file, dither, resize_width):
 @click.option('--print-timeout', default=10, help='Maximum time in seconds to wait for a print to finish')
 @click.option('--resize-width', type=int, help='Resizes input image to the given width while preserving aspect ratio')
 @click.option('-s', '--speed', default=2, type=click.IntRange(0, 2), help='0 = Fastest, 2 = Slowest')
+@click.option('--sharpness', default=0.0, help='Sharpen the image, higher numbers gives a sharper image')
 @click.argument('printer', nargs=-1)
 @click.argument('image_file', type=click.File('rb'))
-def print_image(printer, image_file, cut, density, dither, log_level, margin_top, margin_bottom, print_timeout, resize_width, speed):
+def print_image(printer, image_file, cut, density, dither, log_level, margin_top, margin_bottom, print_timeout, resize_width, speed, sharpness):
     '''
     This is a small utility for sending raster images to Star Micronics TSP100 / TSP143 receipt printers.
 
@@ -227,7 +231,7 @@ def print_image(printer, image_file, cut, density, dither, log_level, margin_top
     if len(printer) > 1:
         raise click.UsageError('Multiple printers specified, please specify a single printer')
 
-    image = process_image(image_file, dither, resize_width)
+    image = process_image(image_file, dither, resize_width, sharpness)
     raw_bytes = image.tobytes()
 
     if not any(raw_bytes):

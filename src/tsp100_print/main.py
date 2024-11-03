@@ -172,13 +172,14 @@ def process_image(image_file, dither, resize_width):
     if any(histogram[1:-1]):
         log.warning('More than 2 levels (black/white), data will be lost via thresholding/dithering')
 
-    image = image.convert("1", dither=getattr(Image.Dither, dither.upper()))
-    image = ImageOps.invert(image)
 
     if resize_width:
         resize_height = resize_width * image.height // image.width
         log.info('Resizing image to width / height: %d / %d', resize_width, resize_height)
         image = image.resize((resize_width, resize_height))
+
+    image = image.convert("1", dither=getattr(Image.Dither, dither.upper()))
+    image = ImageOps.invert(image)
 
     # Crop the image if needed, try to be minimally destructive by only cropping "empty" image data
     if image.width > 576:

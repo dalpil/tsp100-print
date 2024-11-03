@@ -9,7 +9,7 @@ license = "MIT"
 [tool.poetry.dependencies]
 python = "^3.9"
 click = "^8.1.7"
-Pillow = "^10.0.1"
+Pillow = "^11.0.0"
 
 [tool.poetry.scripts]
 tsp100-print = 'tsp100_print.main:print_image'
